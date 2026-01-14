@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="TripSplit">
+    <title>TripSplit Local Pro</title>
+    
+    <link rel="manifest" href="data:application/manifest+json;base64,ewogICJkZWZhdWx0X2xvY2FsZSI6ICJ2aSIsCiAgIm5hbWUiOiAiVHJpcFNwbGl0IExvY2FsIFBybyIsCiAgInNob3J0X25hbWUiOiAiVHJpcFNwbGl0IiwKICAic3RhcnRfdXJsIjogIi4iLAogICJkaXNwbGF5IjogInN0YW5kYWxvbmUiLAogICJiYWNrZ3JvdW5kX2NvbG9yIjogIiM0ZjQ2ZTUiLAogICJ0aGVtZV9jb2xvciI6ICIjNGY0NmU1IiwKICAiaWNvbnMiOiBbCiAgICB7CiAgICAgICJzcmMiOiAiaHR0cHM6Ly9jZG4taWNvbnMtcG5nLmZyZWVwaWsuY29tLzUxMi83NDQ0Lzc0NDQ3ODcucG5nIiwKICAgICAgInNpemVzIjogIjUxMng1MTIiLAogICAgICAidHlwZSI6ICJpbWFnZS9wbmciCiAgICB9CiAgXQp9">
+
+    <!-- Service Worker Core -->
+    <script>
+        const CACHE_NAME = 'tripsplit-vFinal';
+        const ASSETS = [
+            window.location.href,
+            window.location.pathname,
+            'https://cdn.tailwindcss.com',
+            'https://unpkg.com/react@18/umd/react.production.min.js',
+            'https://unpkg.com/react-dom@18/umd/react-dom.production.min.js',
+            'https://unpkg.com/lucide@latest'
+        ];
+
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                const swCode = `
+                    const CACHE_NAME = '${CACHE_NAME}';
+                    const ASSETS = ${JSON.stringify(ASSETS)};
+
+                    self.addEventListener('install', (event) => {
+                        event.waitUntil(
+                            caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS))
+                        );
+                        self.skipWaiting();
+                    });
+
+                    self.addEventListener('activate', (event) => {
+                        event.waitUntil(
+                            caches.keys().then((keys) => Promise.all(
+                                keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k))
+                            ))
+                        );
+                        self.clients.claim();
+                    });
+
+                    self.addEventListener('fetch', (event) => {
+                        event.respondWith(
+                            caches.match(event.request).then((res) => res || fetch(event.request))
+                        );
+                    });
+                `;
+                const blob = new Blob([swCode], { type: 'application/javascript' });
+                navigator.serviceWorker.register(URL.createObjectURL(blob));
+            });
+        }
+    </script>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap');
+        body { font-family: 'Plus Jakarta Sans', sans-serif; -webkit-tap-highlight-color: transparent; }
+        .animate-bounce-in { animation: bounce-in 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+        @keyframes bounce-in { 0% { transform: translateY(-20px); opacity: 0; } 100% { transform: translateY(0); opacity: 1; } }
+        ::-webkit-scrollbar { display: none; }
+        .safe-top { padding-top: env(safe-area-inset-top); }
+        .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+    </style>
+</head>
+<body class="bg-slate-50">
+    <div id="root"></div>
+
+    <script>
+        // Chuyển sang React thuần (No Babel/JSX) để tránh đơ máy khi offline
+        const e = React.createElement;
+        const { useState, useMemo, useEffect } = React;
+
+        const Icon = ({ name, className }) => {
+            useEffect(() => { if (window.lucide) window.lucide.createIcons(); }, [name]);
+            return e('i', { 'data-lucide': name, className: className });
+        };
+
+        const App = () => {
+            const [members, setMembers] = useState(() => JSON.parse(localStorage.getItem('ts_members') || '[]'));
+            const [expenses, setExpenses] = useState(() => JSON.parse(localStorage.getItem('ts_expenses') || '[]'));
+            const [contributions, setContributions] = useState(() => JSON.parse(localStorage.getItem('ts_contributions') || '[]'));
+            const [treasurerId, setTreasurerId] = useState(() => localStorage.getItem('ts_treasurerId') || null);
+
+            useEffect(() => {
+                localStorage.setItem('ts_members', JSON.stringify(members));
+                localStorage.setItem('ts_expenses', JSON.stringify(expenses));
+                localStorage.setItem('ts_contributions', JSON.stringify(contributions));
+                if (treasurerId) localStorage.setItem('ts_treasurerId', treasurerId);
+                else localStorage.removeItem('ts_treasurerId');
+            }, [members, expenses, contributions, treasurerId]);
+
+            const [activeTab, setActiveTab] = useState('report');
+            const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
+            const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+            const [isResetConfirmOpen, setIsResetConfirmOpen] = useState(false);
+            const [showContributionId, setShowContributionId] = useState(null);
+            const [memberToDelete, setMemberToDelete] = useState(null);
+            const [editingExpenseId, setEditingExpenseId] = useState(null);
+            
+            const [newMemberName, setNewMemberName] = useState('');
+            const [description, setDescription] = useState('');
+            const [amount, setAmount] = useState('');
+            const [payerId, setPayerId] = useState('fund');
+            const [splitWith, setSplitWith] = useState([]);
+            const [isAdvance, setIsAdvance] = useState(false);
+            const [copySuccess, setCopySuccess] = useState(false);
+
+            const stats = useMemo(() => {
+                const totalSpent = expenses.reduce((sum, ex) => sum + ex.amount, 0);
+                const totalCashIn = contributions.reduce((sum, c) => sum + c.amount, 0);
+                const fundSpent = expenses.filter(ex => ex.payerId === 'fund').reduce((sum, ex) => sum + ex.amount, 0);
+                const currentFund = totalCashIn - fundSpent;
+                const mStats = members.map(m => {
+                    const cash = contributions.filter(c => c.memberId === m.id).reduce((s, c) => s + c.amount, 0);
+                    const help = expenses.filter(ex => ex.payerId === m.id).reduce((s, ex) => s + ex.amount, 0);
+                    const enjoyed = expenses.reduce((s, ex) => (ex.splitWith?.includes(m.id) ? s + (ex.amount / ex.splitWith.length) : s), 0);
+                    return { ...m, balance: (cash + help) - enjoyed, totalContributed: cash + help, totalEnjoyed: enjoyed, totalAdvance: help };
+                });
+                return { totalSpent, currentFund, mStats };
+            }, [members, expenses, contributions]);
+
+            const fullReportText = useMemo(() => {
+                let report = `📊 TRIPSPLIT REPORT - ${new Date().toLocaleDateString('vi-VN')}\n`;
+                report += `💰 Tổng chi: ${stats.totalSpent.toLocaleString()}K\n`;
+                report += `🏦 Quỹ còn: ${stats.currentFund.toLocaleString()}K\n`;
+                report += `--------------------------\n`;
+                stats.mStats.forEach(m => {
+                    report += `${m.name.toUpperCase()}: ${m.balance >= 0 ? '+' : ''}${m.balance.toFixed(1)}K\n`;
+                });
+                return report;
+            }, [stats]);
+
+            const handleSaveExpense = () => {
+                const val = parseFloat(amount);
+                if (!description || !val || splitWith.length === 0) return;
+                if (editingExpenseId) {
+                    setExpenses(expenses.map(ex => ex.id === editingExpenseId ? { ...ex, description, amount: val, payerId, splitWith, isAdvance } : ex));
+                } else {
+                    setExpenses([{ id: crypto.randomUUID(), description, amount: val, payerId, splitWith, isAdvance, date: new Date().toLocaleString('vi-VN'), createdAt: Date.now() }, ...expenses]);
+                }
+                setIsExpenseModalOpen(false);
+            };
+
+            // Giao diện chính sử dụng e() thay vì JSX
+            return e('div', { className: 'max-w-md mx-auto min-h-screen pb-24 relative safe-bottom' },
+                e('header', { className: `p-6 pb-12 rounded-b-[3rem] text-white shadow-xl sticky top-0 z-40 transition-all safe-top ${stats.currentFund < 0 ? 'bg-rose-600' : 'bg-indigo-600'}` },
+                    e('div', { className: 'flex justify-between items-center mb-6' },
+                        e('h1', { className: 'font-black italic uppercase tracking-tighter flex items-center gap-2 text-lg' }, e(Icon, { name: 'zap' }), 'TripSplit Pro'),
+                        e('button', { onClick: () => setIsResetConfirmOpen(true), className: 'p-2 bg-white/20 rounded-xl' }, e(Icon, { name: 'refresh-ccw', className: 'w-4 h-4' }))
+                    ),
+                    e('div', { className: 'flex justify-between items-center bg-white/10 backdrop-blur-md rounded-[2rem] p-4 border border-white/20' },
+                        e('div', { className: 'text-center flex-1' }, e('p', { className: 'text-[8px] opacity-70 uppercase font-bold' }, 'Quỹ còn'), e('p', { className: 'text-xl font-black' }, stats.currentFund.toLocaleString(), 'K')),
+                        e('button', { onClick: () => { setEditingExpenseId(null); setDescription(''); setAmount(''); setPayerId('fund'); setSplitWith(members.map(m=>m.id)); setIsExpenseModalOpen(true); }, className: 'w-12 h-12 bg-slate-900 rounded-full flex items-center justify-center shadow-lg' }, e(Icon, { name: 'plus' })),
+                        e('div', { className: 'text-center flex-1' }, e('p', { className: 'text-[8px] opacity-70 uppercase font-bold' }, 'Tổng chi'), e('p', { className: 'text-xl font-black' }, stats.totalSpent.toLocaleString(), 'K'))
+                    )
+                ),
+                e('main', { className: 'p-4 space-y-4' },
+                    activeTab === 'report' && e(React.Fragment, null,
+                        e('div', { className: 'bg-white p-3 rounded-[1.5rem] shadow-sm flex gap-2' },
+                            e('input', { className: 'flex-1 px-4 py-2 bg-slate-50 rounded-xl text-sm font-bold outline-none', placeholder: 'Tên thành viên...', value: newMemberName, onChange: ev => setNewMemberName(ev.target.value) }),
+                            e('button', { onClick: () => { if(newMemberName.trim()){ setMembers([...members, {id: crypto.randomUUID(), name: newMemberName.trim()}]); setNewMemberName(''); } }, className: 'p-2 bg-slate-900 text-white rounded-xl' }, e(Icon, { name: 'plus' }))
+                        ),
+                        members.map(m => {
+                            const ms = stats.mStats.find(s => s.id === m.id);
+                            return e('div', { key: m.id, className: 'bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm animate-bounce-in' },
+                                e('div', { className: 'flex justify-between items-center mb-4' },
+                                    e('div', { className: 'flex items-center gap-3' },
+                                        e('div', { className: `p-2 rounded-xl ${treasurerId === m.id ? 'bg-amber-100 text-amber-600' : 'bg-slate-100 text-slate-400'}` }, e(Icon, { name: 'user' })),
+                                        e('div', null, e('p', { className: 'font-black uppercase text-sm' }, m.name), e('button', { onClick: () => setTreasurerId(m.id === treasurerId ? null : m.id), className: 'text-[8px] font-bold text-slate-300 uppercase' }, treasurerId === m.id ? 'Thủ quỹ' : 'Chọn làm thủ quỹ'))
+                                    ),
+                                    e('div', { className: 'flex gap-2' },
+                                        e('button', { onClick: () => setShowContributionId(m.id), className: 'bg-emerald-500 text-white px-3 py-1.5 rounded-lg text-[9px] font-black uppercase' }, 'Nộp quỹ'),
+                                        e('button', { onClick: () => setMembers(members.filter(x => x.id !== m.id)), className: 'p-1.5 text-slate-200' }, e(Icon, { name: 'trash-2', className: 'w-4 h-4' }))
+                                    )
+                                ),
+                                e('div', { className: 'grid grid-cols-3 gap-2' },
+                                    e('div', { className: 'bg-slate-50 p-2 rounded-xl text-center' }, e('p', { className: 'text-[7px] text-slate-400 font-bold' }, 'ĐÃ ĐÓNG'), e('p', { className: 'text-[11px] font-black' }, ms?.totalContributed.toLocaleString(), 'K')),
+                                    e('div', { className: 'bg-slate-50 p-2 rounded-xl text-center' }, e('p', { className: 'text-[7px] text-slate-400 font-bold' }, 'ĐÃ DÙNG'), e('p', { className: 'text-[11px] font-black' }, ms?.totalEnjoyed.toFixed(1), 'K')),
+                                    e('div', { className: `p-2 rounded-xl text-center border ${ms?.balance >= 0 ? 'bg-indigo-50 border-indigo-100' : 'bg-rose-50 border-rose-100'}` }, e('p', { className: 'text-[7px] text-slate-400 font-bold' }, 'CÒN LẠI'), e('p', { className: `text-[11px] font-black ${ms?.balance >= 0 ? 'text-indigo-600' : 'text-rose-600'}` }, ms?.balance.toFixed(1), 'K'))
+                                )
+                            );
+                        })
+                    ),
+                    activeTab === 'history_spent' && expenses.map(ex => e('div', { key: ex.id, className: 'bg-white p-4 rounded-2xl flex justify-between items-center shadow-sm border border-slate-100' },
+                        e('div', { className: 'flex items-center gap-3' },
+                            e('div', { className: 'p-2 bg-indigo-50 text-indigo-600 rounded-lg' }, e(Icon, { name: 'receipt' })),
+                            e('div', null, e('p', { className: 'text-xs font-black' }, ex.description), e('p', { className: 'text-[8px] font-bold text-slate-400' }, ex.date))
+                        ),
+                        e('div', { className: 'flex items-center gap-3' },
+                            e('p', { className: 'text-xs font-black text-rose-500' }, '-', ex.amount, 'K'),
+                            e('button', { onClick: () => setExpenses(expenses.filter(x => x.id !== ex.id)), className: 'text-slate-200' }, e(Icon, { name: 'trash-2', className: 'w-4 h-4' }))
+                        )
+                    ))
+                ),
+
+                // Modals
+                isExpenseModalOpen && e('div', { className: 'fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-50 flex items-end justify-center' },
+                    e('div', { className: 'bg-white w-full max-w-md rounded-t-[2.5rem] p-8 space-y-4 pb-12' },
+                        e('div', { className: 'flex justify-between items-center' }, e('h2', { className: 'font-black uppercase text-sm' }, 'Chi phí mới'), e('button', { onClick: () => setIsExpenseModalOpen(false) }, e(Icon, { name: 'x' }))),
+                        e('input', { className: 'w-full p-4 bg-slate-50 rounded-2xl font-bold text-sm outline-none', placeholder: 'Lý do...', value: description, onChange: ev => setDescription(ev.target.value) }),
+                        e('input', { type: 'number', className: 'w-full p-4 bg-slate-50 rounded-2xl font-black text-indigo-600 text-sm outline-none', placeholder: 'Số tiền (K)', value: amount, onChange: ev => setAmount(ev.target.value) }),
+                        e('button', { onClick: handleSaveExpense, className: 'w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase' }, 'Lưu hóa đơn')
+                    )
+                ),
+
+                showContributionId && e('div', { className: 'fixed inset-0 bg-slate-900/90 z-[100] flex items-center justify-center p-6' },
+                    e('div', { className: 'bg-white w-full max-w-sm rounded-[2.5rem] p-8 text-center' },
+                        e('h3', { className: 'font-black uppercase mb-4 text-xs' }, 'Nộp tiền quỹ'),
+                        e('input', { type: 'number', className: 'w-full text-4xl font-black text-center text-emerald-600 outline-none mb-6', value: amount, onChange: ev => setAmount(ev.target.value), placeholder: '0' }),
+                        e('div', { className: 'flex gap-2' },
+                            e('button', { onClick: () => setShowContributionId(null), className: 'flex-1 py-3 bg-slate-100 rounded-xl font-black' }, 'HỦY'),
+                            e('button', { onClick: () => { 
+                                if(parseFloat(amount)) setContributions([{id: crypto.randomUUID(), memberId: showContributionId, amount: parseFloat(amount), date: new Date().toLocaleString()}, ...contributions]);
+                                setShowContributionId(null); setAmount('');
+                            }, className: 'flex-[2] py-3 bg-emerald-500 text-white rounded-xl font-black' }, 'XÁC NHẬN')
+                        )
+                    )
+                ),
+
+                isResetConfirmOpen && e('div', { className: 'fixed inset-0 bg-slate-900/90 z-[110] flex items-center justify-center p-6' },
+                    e('div', { className: 'bg-white w-full max-w-sm rounded-[2.5rem] p-8 text-center' },
+                        e('h3', { className: 'font-black uppercase mb-2' }, 'Xóa dữ liệu?'),
+                        e('div', { className: 'flex gap-2 mt-6' },
+                            e('button', { onClick: () => setIsResetConfirmOpen(false), className: 'flex-1 py-3 bg-slate-100 rounded-xl font-black' }, 'HỦY'),
+                            e('button', { onClick: () => { setMembers([]); setExpenses([]); setContributions([]); setTreasurerId(null); setIsResetConfirmOpen(false); }, className: 'flex-1 py-3 bg-rose-600 text-white rounded-xl font-black' }, 'XÓA HẾT')
+                        )
+                    )
+                ),
+
+                e('nav', { className: 'fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-xl border-t border-slate-100 flex justify-around items-center p-4 z-40 max-w-md mx-auto rounded-t-[2.5rem] safe-bottom' },
+                    e('button', { onClick: () => setActiveTab('report'), className: `flex flex-col items-center gap-1 ${activeTab==='report'?'text-indigo-600':'text-slate-300'}` }, e(Icon, { name: 'bar-chart-3' }), e('span', { className: 'text-[8px] font-black uppercase' }, 'Thống kê')),
+                    e('button', { onClick: () => setActiveTab('history_spent'), className: `flex flex-col items-center gap-1 ${activeTab==='history_spent'?'text-indigo-600':'text-slate-300'}` }, e(Icon, { name: 'receipt' }), e('span', { className: 'text-[8px] font-black uppercase' }, 'Lịch sử'))
+                )
+            );
+        };
+
+        // Render mà không cần Babel
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(e(App));
+    </script>
+</body>
+</html>
